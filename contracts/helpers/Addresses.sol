@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 library Addresses {
 //    address internal TroveManagerAddress = 0x63Cc74334F4b1119276667cf0079AC0c8a96CFb2;

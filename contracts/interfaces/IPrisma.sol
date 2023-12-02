@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: UNLICENSED
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "./ITroveManager.sol";
 
@@ -25,8 +25,6 @@ interface IPrisma {
     ) external view returns (address, address);
 
     //borrowerOperations
-
-
     function openTrove(
         ITroveManager troveManager,
         address account,
@@ -36,4 +34,6 @@ interface IPrisma {
         address _upperHint,
         address _lowerHint
     ) external;
+
+    function closeTrove(ITroveManager troveManager, address account) external;
 }

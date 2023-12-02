@@ -1,14 +1,16 @@
-pragma solidity ^0.8.19;
+pragma solidity ^0.8.20;
 
 import "./helpers/HintHelper.sol";
 import "./helpers/Addresses.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+
 contract PrismaManage {
     function takeLoan(
         uint _collateralAmount,
         uint _receivingAmount,
         address _troveManagerAddress,
         address _sortedTrovesAddress,
-        address _account,
+        address _collateralTokenAddress,
         uint _randomSeedNumber,
         uint _maxFeePercentage
 
@@ -20,9 +22,10 @@ contract PrismaManage {
             _sortedTrovesAddress,
             _randomSeedNumber
         );
+        IERC20(_collateralTokenAddress).approve(Addresses.borrowerOperationAddress, _collateralAmount);
         IPrisma(Addresses.borrowerOperationAddress).openTrove(
             ITroveManager(_troveManagerAddress),
-            _account,
+            address(this),
             _maxFeePercentage,
             _collateralAmount,
             HintHelper.approximateDebtAmount(_troveManagerAddress, _receivingAmount),
@@ -30,5 +33,11 @@ contract PrismaManage {
             lowerHint
         );
     }
-//    function payOff();
+   function payOff(
+       address _troveManager,
+       address _account
+   ) external{
+       //TODO: APPROVE
+       IPrisma(Addresses.borrowerOperationAddress).closeTrove(ITroveManager(_troveManager), _account);
+   }
 }

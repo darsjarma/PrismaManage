@@ -4,7 +4,7 @@ require('dotenv').config()
 
 module.exports = {
   solidity: {
-    version: "0.8.19",
+    version: "0.8.20",
     settings: {
       optimizer: {
         enabled: true,
@@ -17,8 +17,10 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: "https://weathered-sleek-meme.quiknode.pro/ccf7f568cd1635ad0e32fe674eaab4a586bf0b90/",
-        blockNumber: 18667678 //Before an opening trove
+        url: "https://eth.llamarpc.com",
+        // url: "https://flashy-alien-telescope.quiknode.pro/c2f9146b98ffb9fc8808a23dcffdb488890a32a1/",
+        blockNumber: 18667678, //Before an opening trove,
+        origin: 'singapore'
       }
     },
     goerli:{

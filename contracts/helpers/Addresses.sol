@@ -6,4 +6,5 @@ library Addresses {
 //    address internal SortedTrovesAddress = 0x9Ac1892f1f87D9a3A135Fb87C425098a9a720a42;
     address public constant  multiCollateralHintHelperAddress = 0x3C5871D69C8d6503001e1A8f3bF7E5EbE447A9Cd;
     address public constant borrowerOperationAddress= 0x72c590349535AD52e6953744cb2A36B409542719;
+    address public constant mkUSDAddress = 0x4591DBfF62656E7859Afe5e45f6f47D3669fBB28;
 }

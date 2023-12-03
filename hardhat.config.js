@@ -17,8 +17,8 @@ module.exports = {
   networks: {
     hardhat: {
       forking: {
-        url: "https://eth.llamarpc.com",
-        // url: "https://flashy-alien-telescope.quiknode.pro/c2f9146b98ffb9fc8808a23dcffdb488890a32a1/",
+        url: "https://rpc.mevblocker.io/fullprivacy",
+        // url: "https://little-yolo-emerald.quiknode.pro/369be4aaa1161d62e009f0e1a4ac1e94cd6fb45b/",
         blockNumber: 18667678, //Before an opening trove,
         origin: 'singapore'
       }

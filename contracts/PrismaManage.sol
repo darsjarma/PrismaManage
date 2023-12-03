@@ -35,9 +35,9 @@ contract PrismaManage {
     }
    function payOff(
        address _troveManager,
-       address _account
+       uint _mkUsdAmount
    ) external{
-       //TODO: APPROVE
-       IPrisma(Addresses.borrowerOperationAddress).closeTrove(ITroveManager(_troveManager), _account);
+       IERC20(Addresses.mkUSDAddress).approve(Addresses.borrowerOperationAddress, _mkUsdAmount);
+       IPrisma(Addresses.borrowerOperationAddress).closeTrove(ITroveManager(_troveManager), address(this));
    }
 }

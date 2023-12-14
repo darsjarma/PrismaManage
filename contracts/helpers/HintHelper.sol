@@ -3,6 +3,8 @@ pragma solidity ^0.8.20;
 
 import "../interfaces/IPrisma.sol";
 import "./Addresses.sol";
+import "./Addresses.sol";
+
 library HintHelper {
     function approximateDebtAmount(address _troveManager, uint _receivingAmount) public view returns(uint){
         uint liquidationReserve = IPrisma(_troveManager).DEBT_GAS_COMPENSATION();

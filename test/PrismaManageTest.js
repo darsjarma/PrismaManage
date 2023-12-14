@@ -2,6 +2,13 @@ const {expect, assert} = require("chai")
 const {loadFixture} = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const helpers = require("@nomicfoundation/hardhat-toolbox/network-helpers");
 const {ethers} = require("hardhat")
+const axios = require("axios");
+const {LiFi} = require("@lifi/sdk")
+
+const lifi = new LiFi({
+    integrator: "PrismaManage"
+})
+
 
 const forkingURL = 'https://rpc.mevblocker.io/fullprivacy'
 const forkingBlockNumber = 18667678
@@ -23,25 +30,69 @@ const hintAddress = '0x3C5871D69C8d6503001e1A8f3bF7E5EbE447A9Cd'
 
 const stEthTokenAddress = '0x7f39C581F595B53c5cb19bD0b3f8dA6c935E2Ca0'
 
+const usdcAddress = '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48'
 
+const getQuote = async (fromChain, toChain, fromToken, toToken, fromAmount, fromAddress, toAddress) => {
 
+    const routeOptions = {
+        slippage: 10/100
+    }
+    const RoutesRequest  = {
+        fromChain: fromChain,
+        fromToken: fromToken,
+        fromAmount: fromAmount,
+        fromAddress: fromAddress,
+        toChain: toChain,
+        toToken: toToken,
+        toAddress: toAddress,
+    }
+    const result = await lifi.getQuote(RoutesRequest, routeOptions)
+    return result.transactionRequest.data;
+}
+//
+// const getQuote = async (fromChain, toChain, fromToken, toToken, fromAmount, fromAddress, toAddress) => {
+//     const result = await axios.get('https://li.quest/v1/quote', {
+//         params: {
+//             fromToken: fromToken,
+//             toToken: toToken,
+//             fromAddress: fromAddress,
+//             toAddress: toAddress,
+//             fromAmount: fromAmount,
+//             fromChain: fromChain,
+//             toChain: toChain,
+//             slippage: 0.2
+//         }
+//     });
+//     return result.data.transactionRequest.data;
+// }
+
+function parseUnit(number, power){
+    return number/BigInt(10**power);
+}
 describe("PrismaManageTest", function(){
-    beforeEach(async function(){
-        await helpers.reset(forkingURL, forkingBlockNumber);
-    })
+    // beforeEach(async function(){
+    //     await helpers.reset(forkingURL, forkingBlockNumber);
+    // })
     async function deployPrismaManageFixture(){
         const [owner, addr1, addr2] = await ethers.getSigners();
         const HintHelperFactory = await ethers.getContractFactory("HintHelper");
         const HintHelperInstance = await HintHelperFactory.deploy();
         await HintHelperInstance.waitForDeployment();
+        const SwapHelperFactory = await ethers.getContractFactory("SwapHelper");
+        const SwapHelperInstance = await SwapHelperFactory.deploy();
+        await SwapHelperInstance.waitForDeployment();
         const prismaManageFactory = await ethers.getContractFactory("PrismaManage", {
-            libraries: {HintHelper: HintHelperInstance}
+            libraries: {
+                        HintHelper: HintHelperInstance,
+                        SwapHelper: SwapHelperInstance
+            }
         });
         const prismaManageInstance = await prismaManageFactory.deploy();
         await prismaManageInstance.waitForDeployment();
         return{prismaManageInstance,HintHelperInstance, owner, addr1, addr2};
     }
     it("Should calculate some parameters correctly.", async()=>{
+        await helpers.reset(forkingURL, 18667678);
         const hint = await ethers.getContractAt(hintABI, hintAddress)
         const stEthSortedTroves = await ethers.getContractAt(stEthSortedTrovesABI, stEthSortedTrovesAddress)
         const stEthTroveManager = await ethers.getContractAt(stEthTroveManagerABI, stEthTroveManagerAddress)
@@ -49,9 +100,10 @@ describe("PrismaManageTest", function(){
         const BorrowerOperations = await ethers.getContractAt(BorrowerOperationsABI, BorrowerOperationAddress);
         const impersonatedSigner = await ethers.getImpersonatedSigner("0xD28a4c5B3685e5948d8A57f124669eafB69F05Bb");
         const stEthToken = await ethers.getContractAt(mkUSDABI, stEthTokenAddress);
-        const liquidationReserve = await stEthTroveManager.DEBT_GAS_COMPENSATION();
-        const expectedFee = await stEthTroveManager.getBorrowingFeeWithDecay(BigInt(7470000000000000000000))
-        const expectedDebt = BigInt(expectedFee + liquidationReserve + BigInt(7470000000000000000000))
+        // const liquidationReserve = await stEthTroveManager.DEBT_GAS_COMPENSATION();
+        // const expectedFee = await stEthTroveManager.getBorrowingFeeWithDecay(BigInt(7470000000000000000000))
+        // const expectedDebt = BigInt(expectedFee + liquidationReserve + BigInt(7470000000000000000000))
+        const debt = BigInt(7470000000000000000000);
         const NICR = ethers.parseUnits('5', 18+20)/ expectedDebt
         const numberOfTroves = await stEthSortedTroves.getSize();
         const numberOfTrials = Number(numberOfTroves)*15
@@ -68,7 +120,7 @@ describe("PrismaManageTest", function(){
             impersonatedSigner.getAddress(),
             feePercentage,
             collateralAmount,
-            expectedDebt,
+            debt,
             upperHint,
             lowerHint
         )).to.not.equal(0)
@@ -77,13 +129,14 @@ describe("PrismaManageTest", function(){
         assert(mkUSDAfter-mkUSDBefore>=expectedDebt, "Not enough return");
     }).timeout(1200000)
     it("Should open a trove using the takeLoan function and pay it of using the payOff function", async()=>{
+        await helpers.reset(forkingURL, 18667678);
         const {prismaManageInstance} = await loadFixture(deployPrismaManageFixture);
         const stEthToken = await ethers.getContractAt(mkUSDABI, stEthTokenAddress);
         const mkUSD = await ethers.getContractAt(mkUSDABI, mkUSDAddress)
         const impersonatedSigner = await ethers.getImpersonatedSigner("0xD28a4c5B3685e5948d8A57f124669eafB69F05Bb");
+        const stEthTroveManager = await ethers.getContractAt(stEthTroveManagerABI, stEthTroveManagerAddress)
         let mkUSDBeforeTakingLoan, mkUSDAfterTakingLoan;
         let stEthBeforePayingOff, stEthAfterPayingOff;
-
         let collateralAmount = ethers.parseUnits('4', 18);
         let requiredReceivingAmount = ethers.parseUnits('6000', 18);
         let maxFeePercentage = BigInt(10015425152739764);
@@ -100,11 +153,73 @@ describe("PrismaManageTest", function(){
         );
         console.log(`mkUSD after taking loan: ${mkUSDAfterTakingLoan = await mkUSD.balanceOf(prismaManageInstance.getAddress())}`);
         assert(mkUSDAfterTakingLoan-mkUSDBeforeTakingLoan>=ethers.parseUnits('6000', 18), "Not enough return");
-        const mkUSDBigHolerSigner = await ethers.getImpersonatedSigner("0x03d03A026E71979BE3b08D44B01eAe4C5FF9da99");
-        await mkUSD.connect(mkUSDBigHolerSigner).transfer(prismaManageInstance.getAddress(), ethers.parseUnits('1000', 18));
+        console.log(`coll/debt: ${await stEthTroveManager.Troves(prismaManageInstance)}`);
+        const mkUSDBigHolderSigner = await ethers.getImpersonatedSigner("0x03d03A026E71979BE3b08D44B01eAe4C5FF9da99");
+        await mkUSD.connect(mkUSDBigHolderSigner).transfer(prismaManageInstance.getAddress(), ethers.parseUnits('1000', 18));
         console.log(`stEth before paying off: ${stEthBeforePayingOff = await stEthToken.balanceOf(prismaManageInstance.getAddress())}`);
         await prismaManageInstance.connect(impersonatedSigner).payOff(stEthTroveManagerAddress, mkUSDAfterTakingLoan);
         console.log(`stEth after paying off: ${stEthAfterPayingOff = await stEthToken.balanceOf(prismaManageInstance.getAddress())}\nstEth difference: ${stEthAfterPayingOff-stEthBeforePayingOff}`);
         assert(stEthAfterPayingOff-stEthBeforePayingOff>=ethers.parseUnits('4', 18), "Not enough return");
+    }).timeout(1200000)
+    it.only("Should receive usdc change it for collateral and then take a loan", async()=>{
+        await helpers.reset(forkingURL, 18770586);
+        console.log(await ethers.provider.getBlockNumber());
+        const {prismaManageInstance, HintHelperInstance, owner} = await loadFixture(deployPrismaManageFixture);
+        // await helpers.reset(forkingURL, 18667678);
+        const prismaManageInstanceString = await prismaManageInstance.getAddress();
+        // const lastBlock = await ethers.provider.getBlock('latest');
+        //18757690
+        // console.log(await ethers.provider)
+        const stEthTroveManager = await ethers.getContractAt(stEthTroveManagerABI, stEthTroveManagerAddress)
+        const mkUSD = await ethers.getContractAt(mkUSDABI, mkUSDAddress);
+        const usdc = await ethers.getContractAt(mkUSDABI, usdcAddress);
+        const impersonatedSigner = await ethers.getImpersonatedSigner("0x28C6c06298d514Db089934071355E5743bf21d60");
+        const sendingUSDCAmount = ethers.parseUnits('1000000', 6);
+        // const USDCToStETHQuote = await getQuote('ETH', 'ETH', usdcAddress, stEthTokenAddress, sendingUSDCAmount, prismaManageInstanceString, prismaManageInstanceString)
+        const USDCToStETHQuote = '0x4630a0d8a124623a5c99665353aa62845ac4d7b633eac25652c4bdce804c56e9405599c600000000000000000000000000000000000000000000000000000000000000c000000000000000000000000000000000000000000000000000000000000001000000000000000000000000004432a6dcfaeab227673b43c30c6fef40eabd5d300000000000000000000000000000000000000000000000151c1ad146706312200000000000000000000000000000000000000000000000000000000000000160000000000000000000000000000000000000000000000000000000000000000c707269736d616d616e6167650000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000002a30783030303030303030303030303030303030303030303030303030303030303030303030303030303000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000200000000000000000000000001111111254eeb25477b68fb85ed929f73a9605820000000000000000000000001111111254eeb25477b68fb85ed929f73a960582000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000007f39c581f595b53c5cb19bd0b3f8da6c935e2ca0000000000000000000000000000000000000000000000000000000e8d4a5100000000000000000000000000000000000000000000000000000000000000000e00000000000000000000000000000000000000000000000000000000000000001000000000000000000000000000000000000000000000000000000000000060812aa3caf000000000000000000000000e37e799d5077682fa0a244d46e5649f71457bd09000000000000000000000000a0b86991c6218b36c1d19d4a2e9eb0ce3606eb480000000000000000000000007f39c581f595b53c5cb19bd0b3f8da6c935e2ca0000000000000000000000000e37e799d5077682fa0a244d46e5649f71457bd090000000000000000000000001231deb6f5749ef6ce6943a275a1d3e7486f4eae000000000000000000000000000000000000000000000000000000e8d4a510000000000000000000000000000000000000000000000000151c1ad146706313220000000000000000000000000000000000000000000000000000000000000004000000000000000000000000000000000000000000000000000000000000014000000000000000000000000000000000000000000000000000000000000001600000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000046a00000000000000000000000000000000000000000000044c00041e0003d400a0c9e75c48000000000000000008020000000000000000000000000000000000000000000000000003a60000c200a007e5c0d200000000000000000000000000000000000000000000000000009e00004f02a0000000000000000000000000000000000000000000000004d31127aceec2264bee63c1e50188e6a0c2ddd26feeb64f039a2c41296fcb3f5640a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800a0fbb7cd060093d199263632a4ef4bb438f1feb99e57b4b5f0bd0000000000000000000005c2c02aaa39b223fe8d0a0e5c4f27ead9083c756cc27f39c581f595b53c5cb19bd0b3f8da6c935e2ca000a007e5c0d20000000000000000000000000000000002c00002710002570000ca0000b05120bebc44782c7db0a1a60cb6fe97d0b483032ff1c7a0b86991c6218b36c1d19d4a2e9eb0ce3606eb4800443df02124000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000020000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000b870de4edd0020d6bdbf78dac17f958d2ee523a2206206994597c13d831ec700a0c9e75c480000000000000000280a00000000000000000000000000000000000000000000000000015f00004f02a0000000000000000000000000000000000000000000000003dc178e67eeec33e1ee63c1e50011b815efb8f581194ae79006d24e0d814b7697f6dac17f958d2ee523a2206206994597c13d831ec75120d17b3c9784510e33cd5b87b490e79253bcd81e2edac17f958d2ee523a2206206994597c13d831ec7004458d30ac9000000000000000000000000dac17f958d2ee523a2206206994597c13d831ec7000000000000000000000000c02aaa39b223fe8d0a0e5c4f27ead9083c756cc2000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000f72e28d5068f6ef450000000000000000000000000000000000000000000000000000000000000000000000000000000000000000e37e799d5077682fa0a244d46e5649f71457bd0900000000000000000000000000000000000000000000000000000000657f00700020d6bdbf78c02aaa39b223fe8d0a0e5c4f27ead9083c756cc202a0000000000000000000000000000000000000000000000010cdfd5ea439a120d7ee63c1e500109830a1aaad605bbf02a9dfa7b0b92ec2fb7daac02aaa39b223fe8d0a0e5c4f27ead9083c756cc200a0f2fa6b667f39c581f595b53c5cb19bd0b3f8da6c935e2ca00000000000000000000000000000000000000000000000153742d4e64f81291a00000000000000000006f3011bdcfab480a06c4eca277f39c581f595b53c5cb19bd0b3f8da6c935e2ca01111111254eeb25477b68fb85ed929f73a960582000000000000000000000000000000000000000000002e9b3012000000000000000000000000000000000000000000000000';
+        // console.log(USDCToStETHQuote);
+        let mkUsdBeforeTakeLoan, mkUsdAfterTakeLoan, mkUsdBeforePayingOff, mkUsdAfterPayingOff;
+        let UsdBeforeTakeLoan, UsdAfterTakeLoan, UsdcBeforePayingOff, UsdcAfterPayingOff;
+        console.log(`mkUSD before taking loan: ${mkUsdBeforeTakeLoan = await mkUSD.balanceOf(impersonatedSigner)}`);
+        console.log(`usdc before taking loan: ${UsdBeforeTakeLoan= await usdc.balanceOf(impersonatedSigner)}`);
+        const receivingMkUSDAmount = ethers.parseUnits('799900', 18);
+        let maxFeePercentage = ethers.parseUnits('0.010015425152739764', 18);
+        await usdc.connect(impersonatedSigner).approve(prismaManageInstance.getAddress(), sendingUSDCAmount);
+        const result = await prismaManageInstance.connect(impersonatedSigner).submit(
+            usdcAddress,
+            stEthTroveManagerAddress,
+            stEthSortedTrovesAddress,
+            stEthTokenAddress,
+            sendingUSDCAmount,
+            receivingMkUSDAmount,
+            17, //random seed number
+            maxFeePercentage,
+            '0x'+USDCToStETHQuote.slice(10)
+        )
+        // console.log(result)
+        console.log(`mkUSD after taking loan: ${mkUsdAfterTakeLoan = await mkUSD.balanceOf(impersonatedSigner)}`);
+        console.log(`usdc after taking loan: ${UsdAfterTakeLoan = await usdc.balanceOf(impersonatedSigner)}`);
+        console.log(`usdc difference: ${parseUnit(UsdAfterTakeLoan-UsdBeforeTakeLoan,6)}\nmkUsd difference: ${parseUnit(mkUsdAfterTakeLoan-mkUsdBeforeTakeLoan, 18)}`)
+        let mkUsdDifference = mkUsdAfterTakeLoan-mkUsdBeforeTakeLoan;
+        const trove = await stEthTroveManager.Troves(prismaManageInstance.getAddress());
+        console.log(trove);
+        // console.log(StEthToUSDCQuote);
+        const mkUSDBigHolderSigner = await ethers.getImpersonatedSigner("0x03d03A026E71979BE3b08D44B01eAe4C5FF9da99");
+        await owner.sendTransaction({
+            value: ethers.parseEther('10'),
+            to: mkUSDBigHolderSigner.address
+        })
+        // console.log((await ethers.provider.getFeeData()).gasPrice)
+        await mkUSD.connect(mkUSDBigHolderSigner).transfer(impersonatedSigner.getAddress(), ethers.parseUnits('10000', 18));
+        // const expectedFee = await stEthTroveManager.getBorrowingFeeWithDecay(BigInt(mkUsdDifference))
+        console.log(await mkUSD.balanceOf(impersonatedSigner));
+        await mkUSD.connect(impersonatedSigner).approve(prismaManageInstance, trove[0]);
+        console.log(`mkUSD before paying off the loan: ${mkUsdBeforePayingOff = await mkUSD.balanceOf(impersonatedSigner)}`);
+        console.log(`usdc before paying off the loan: ${UsdcBeforePayingOff = await usdc.balanceOf(impersonatedSigner)}`);
+        const StEthToUSDCQuote = await getQuote('ETH', 'ETH', stEthTokenAddress, usdcAddress, trove[1], prismaManageInstanceString, prismaManageInstanceString)
+        await prismaManageInstance.connect(impersonatedSigner).withdraw(stEthTroveManagerAddress, stEthTokenAddress, trove[0], '0x'+StEthToUSDCQuote.slice(10));
+        console.log(`mkUSD after paying off the loan: ${mkUsdAfterPayingOff = await mkUSD.balanceOf(impersonatedSigner)}`);
+        console.log(`usdc after paying off the loan: ${UsdcAfterPayingOff = await usdc.balanceOf(impersonatedSigner)}`);
+        console.log(`usdc difference: ${parseUnit((UsdcAfterPayingOff-UsdcBeforePayingOff), 6)}\nmkUsd difference:  ${parseUnit(mkUsdAfterPayingOff-mkUsdBeforePayingOff,18)}`)
     }).timeout(1200000)
 })

@@ -6,21 +6,22 @@ import "./Addresses.sol";
 import "./Addresses.sol";
 
 library HintHelper {
-    function approximateDebtAmount(address _troveManager, uint _receivingAmount) public view returns(uint){
+    function approximateDebtAmount(address _troveManager, uint _receivingAmount) public view returns (uint){
         uint liquidationReserve = IPrisma(_troveManager).DEBT_GAS_COMPENSATION();
         uint expectedFee = IPrisma(_troveManager).getBorrowingFeeWithDecay(_receivingAmount);
-        return(_receivingAmount +expectedFee+liquidationReserve);
+        return (_receivingAmount + expectedFee + liquidationReserve);
     }
+
     function getHints(
         uint _collateralAmount,
         uint _receivingAmount,
         address _troveManager,
         address _sortedTrovesAddress,
         uint randomSeedNumber
-    ) public view returns(address, address){
+    ) public view returns (address, address){
         uint expectedDebt = approximateDebtAmount(_troveManager, _receivingAmount);
-        uint _CR = _collateralAmount* 10**20 / expectedDebt;
-        uint numberOfTroves =  IPrisma(_sortedTrovesAddress).getSize();
+        uint _CR = _collateralAmount * 10 ** 20 / expectedDebt;
+        uint numberOfTroves = IPrisma(_sortedTrovesAddress).getSize();
         uint numberOfTrials = 15 * numberOfTroves;
         (address hintAddress,,) = IPrisma(Addresses.multiCollateralHintHelperAddress).getApproxHint(
             ITroveManager(_troveManager),
@@ -31,6 +32,6 @@ library HintHelper {
         (address upperHint, address lowerHint) = IPrisma(_sortedTrovesAddress).findInsertPosition(
             _CR, hintAddress, hintAddress
         );
-    return  (upperHint, lowerHint);
+        return (upperHint, lowerHint);
     }
 }
